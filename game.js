@@ -3,10 +3,14 @@ const ctx = canvas.getContext("2d");
 
 const W = canvas.width;
 const H = canvas.height;
-const WORLD_W = 2850;
+let WORLD_W = 2850;
 const GRAVITY = 0.82;
 const FRICTION = 0.82;
 const MAX_FALL = 22;
+const PLAYER_GROUND_ACCEL = 1.08;
+const PLAYER_AIR_ACCEL = 0.68;
+const PLAYER_MAX_SPEED = 6.8;
+const PLAYER_DASH_SPEED = 13;
 const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
 canvas.width = W * DPR;
@@ -18,11 +22,14 @@ ctx.scale(DPR, DPR);
 const keys = new Set();
 const particles = [];
 const projectiles = [];
+const enemyProjectiles = [];
 const floatingTexts = [];
 
 let cameraX = 0;
 let lastTime = 0;
 let gameWon = false;
+let levelCleared = false;
+let currentLevelIndex = 0;
 let shake = 0;
 
 const colors = {
@@ -62,37 +69,100 @@ const player = {
   fireCooldown: 0,
 };
 
-const platforms = [
-  { x: 0, y: 590, w: 760, h: 42, type: "ground" },
-  { x: 760, y: 600, w: 560, h: 42, type: "ground" },
-  { x: 1380, y: 585, w: 530, h: 42, type: "ground" },
-  { x: 2030, y: 590, w: 820, h: 42, type: "ground" },
-  { x: 520, y: 435, w: 360, h: 24, type: "branch" },
-  { x: 1080, y: 365, w: 330, h: 24, type: "branch" },
-  { x: 1670, y: 415, w: 360, h: 24, type: "branch" },
-  { x: 2200, y: 355, w: 420, h: 24, type: "branch" },
+const basePlayerStats = {
+  maxHp: 230,
+  maxMp: 120,
+  exp: 35,
+  level: 1,
+  gold: 0,
+};
+
+const levelConfigs = [
+  {
+    name: "森林小径",
+    quest: "穿过森林小径，到达右侧旗帜",
+    hint: "击败守卫并收集金币，可获得经验",
+    worldW: 2850,
+    start: { x: 95, y: 470 },
+    clearReward: 50,
+    platforms: [
+      { x: 0, y: 590, w: 760, h: 42, type: "ground" },
+      { x: 760, y: 600, w: 560, h: 42, type: "ground" },
+      { x: 1380, y: 585, w: 530, h: 42, type: "ground" },
+      { x: 2030, y: 590, w: 820, h: 42, type: "ground" },
+      { x: 520, y: 435, w: 360, h: 24, type: "branch" },
+      { x: 1080, y: 365, w: 330, h: 24, type: "branch" },
+      { x: 1670, y: 415, w: 360, h: 24, type: "branch" },
+      { x: 2200, y: 355, w: 420, h: 24, type: "branch" },
+    ],
+    enemies: [
+      { x: 650, y: 540, minX: 580, maxX: 840, name: "叶影史莱姆" },
+      { x: 1300, y: 535, minX: 1180, maxX: 1540, name: "藤甲守卫" },
+      { x: 2190, y: 540, minX: 2060, maxX: 2500, name: "暮色蘑菇" },
+    ],
+    coins: [
+      { x: 260, y: 525 },
+      { x: 590, y: 390 },
+      { x: 720, y: 390 },
+      { x: 1170, y: 320 },
+      { x: 1350, y: 320 },
+      { x: 1760, y: 370 },
+      { x: 1960, y: 370 },
+      { x: 2300, y: 310 },
+      { x: 2480, y: 310 },
+      { x: 2680, y: 525 },
+    ],
+    finish: { x: 2735, y: 478, w: 44, h: 112 },
+  },
+  {
+    name: "雾河栈道",
+    quest: "越过雾河栈道，点亮终点旗帜",
+    hint: "第二关平台更分散，善用火球和冲刺",
+    worldW: 3200,
+    start: { x: 92, y: 470 },
+    clearReward: 80,
+    platforms: [
+      { x: 0, y: 590, w: 560, h: 42, type: "ground" },
+      { x: 680, y: 610, w: 560, h: 42, type: "ground" },
+      { x: 1340, y: 585, w: 430, h: 42, type: "ground" },
+      { x: 1840, y: 600, w: 620, h: 42, type: "ground" },
+      { x: 2500, y: 590, w: 700, h: 42, type: "ground" },
+      { x: 390, y: 430, w: 260, h: 24, type: "branch" },
+      { x: 870, y: 360, w: 300, h: 24, type: "branch" },
+      { x: 1280, y: 435, w: 240, h: 24, type: "branch" },
+      { x: 1710, y: 330, w: 320, h: 24, type: "branch" },
+      { x: 2220, y: 410, w: 320, h: 24, type: "branch" },
+      { x: 2650, y: 350, w: 310, h: 24, type: "branch" },
+    ],
+    enemies: [
+      { x: 760, y: 558, minX: 710, maxX: 1160, name: "雾林游侠", type: "ranger", speed: 1.25, hp: 88, damage: 16 },
+      { x: 1450, y: 530, minX: 1360, maxX: 1715, name: "苔石守卫", type: "guard", speed: 0.95, hp: 126, damage: 24, w: 52, h: 48 },
+      { x: 2040, y: 550, minX: 1900, maxX: 2380, name: "蓝焰蘑菇", type: "mushroom", speed: 1.35, hp: 92, damage: 21 },
+      { x: 2780, y: 538, minX: 2600, maxX: 3060, name: "暮光哨兵", type: "sentinel", speed: 1.45, hp: 112, damage: 25 },
+    ],
+    coins: [
+      { x: 430, y: 385 },
+      { x: 580, y: 385 },
+      { x: 900, y: 315 },
+      { x: 1070, y: 315 },
+      { x: 1320, y: 390 },
+      { x: 1480, y: 390 },
+      { x: 1780, y: 285 },
+      { x: 1960, y: 285 },
+      { x: 2290, y: 365 },
+      { x: 2420, y: 365 },
+      { x: 2720, y: 305 },
+      { x: 2910, y: 305 },
+      { x: 3070, y: 525 },
+    ],
+    finish: { x: 3090, y: 478, w: 44, h: 112 },
+  },
 ];
 
-const enemies = [
-  makeEnemy(650, 540, 580, 840, "叶影史莱姆"),
-  makeEnemy(1300, 535, 1180, 1540, "藤甲守卫"),
-  makeEnemy(2190, 540, 2060, 2500, "暮色蘑菇"),
-];
-
-const coins = [
-  { x: 260, y: 525, got: false },
-  { x: 590, y: 390, got: false },
-  { x: 720, y: 390, got: false },
-  { x: 1170, y: 320, got: false },
-  { x: 1350, y: 320, got: false },
-  { x: 1760, y: 370, got: false },
-  { x: 1960, y: 370, got: false },
-  { x: 2300, y: 310, got: false },
-  { x: 2480, y: 310, got: false },
-  { x: 2680, y: 525, got: false },
-];
-
-const finishFlag = { x: 2735, y: 478, w: 44, h: 112 };
+const platforms = [];
+const enemies = [];
+const coins = [];
+const finishFlag = { x: 0, y: 0, w: 44, h: 112 };
 
 const skillSlots = [
   { key: "J", name: "斩击", color: "#f7ead0" },
@@ -101,21 +171,86 @@ const skillSlots = [
   { key: "R", name: "重开", color: "#9eea61" },
 ];
 
-function makeEnemy(x, y, minX, maxX, name) {
+function makeEnemy(x, y, minX, maxX, name, options = {}) {
+  const speed = options.speed ?? 1.25;
+  const hp = options.hp ?? 70;
   return {
     x,
     y,
-    w: 44,
-    h: 42,
-    vx: 1.25,
+    w: options.w ?? 44,
+    h: options.h ?? 42,
+    vx: speed,
+    baseSpeed: speed,
     minX,
     maxX,
-    hp: 70,
-    maxHp: 70,
+    hp,
+    maxHp: hp,
+    damage: options.damage ?? 18,
+    type: options.type ?? "slime",
     alive: true,
     hitTimer: 0,
+    attackCooldown: 40 + Math.random() * 60,
+    phase: Math.random() * Math.PI * 2,
     name,
   };
+}
+
+function currentLevel() {
+  return levelConfigs[currentLevelIndex];
+}
+
+function spawnEnemy(config) {
+  return makeEnemy(config.x, config.y, config.minX, config.maxX, config.name, config);
+}
+
+function loadLevel(index, resetStats = false) {
+  const level = levelConfigs[index];
+  currentLevelIndex = index;
+  WORLD_W = level.worldW;
+  platforms.splice(0, platforms.length, ...level.platforms.map((platform) => ({ ...platform })));
+  enemies.splice(0, enemies.length, ...level.enemies.map(spawnEnemy));
+  coins.splice(0, coins.length, ...level.coins.map((coin) => ({ ...coin, got: false })));
+  Object.assign(finishFlag, level.finish);
+
+  player.x = level.start.x;
+  player.y = level.start.y;
+  player.vx = 0;
+  player.vy = 0;
+  player.dir = 1;
+  player.onGround = false;
+  player.invuln = 0;
+  player.attackTimer = 0;
+  player.dashTimer = 0;
+  player.dashCooldown = 0;
+  player.fireCooldown = 0;
+
+  if (resetStats) {
+    player.maxHp = basePlayerStats.maxHp;
+    player.maxMp = basePlayerStats.maxMp;
+    player.hp = player.maxHp;
+    player.mp = player.maxMp;
+    player.exp = basePlayerStats.exp;
+    player.level = basePlayerStats.level;
+    player.gold = basePlayerStats.gold;
+  } else {
+    player.hp = Math.min(player.maxHp, player.hp + 45);
+    player.mp = player.maxMp;
+  }
+
+  projectiles.length = 0;
+  enemyProjectiles.length = 0;
+  particles.length = 0;
+  floatingTexts.length = 0;
+  levelCleared = false;
+  gameWon = false;
+  cameraX = 0;
+  shake = 0;
+}
+
+function advanceLevel() {
+  if (currentLevelIndex >= levelConfigs.length - 1) return;
+  loadLevel(currentLevelIndex + 1, false);
+  addText(`第${currentLevelIndex + 1}关：${currentLevel().name}`, player.x + 6, player.y - 18, "#fff4d5");
 }
 
 function rectsOverlap(a, b) {
@@ -127,30 +262,7 @@ function clamp(value, min, max) {
 }
 
 function resetGame() {
-  player.x = 95;
-  player.y = 470;
-  player.vx = 0;
-  player.vy = 0;
-  player.dir = 1;
-  player.hp = player.maxHp;
-  player.mp = player.maxMp;
-  player.exp = 35;
-  player.gold = 0;
-  player.invuln = 0;
-  player.attackTimer = 0;
-  player.dashTimer = 0;
-  player.dashCooldown = 0;
-  player.fireCooldown = 0;
-  enemies.splice(0, enemies.length, makeEnemy(650, 540, 580, 840, "叶影史莱姆"), makeEnemy(1300, 535, 1180, 1540, "藤甲守卫"), makeEnemy(2190, 540, 2060, 2500, "暮色蘑菇"));
-  coins.forEach((coin) => {
-    coin.got = false;
-  });
-  projectiles.length = 0;
-  particles.length = 0;
-  floatingTexts.length = 0;
-  gameWon = false;
-  cameraX = 0;
-  shake = 0;
+  loadLevel(0, true);
 }
 
 function addParticles(x, y, color, count = 10, power = 5) {
@@ -238,7 +350,7 @@ function castFireball() {
 function dash() {
   if (player.dashCooldown > 0 || player.mp < 16) return;
   player.mp -= 16;
-  player.vx = player.dir * 15;
+  player.vx = player.dir * PLAYER_DASH_SPEED;
   player.dashTimer = 12;
   player.dashCooldown = 70;
   player.invuln = Math.max(player.invuln, 18);
@@ -287,17 +399,23 @@ function hurtPlayer(amount, sourceX) {
 function update(delta) {
   if (keys.has("r")) resetGame();
 
+  if (levelCleared) {
+    updateEffects();
+    if (keys.has("enter")) advanceLevel();
+    return;
+  }
+
   if (player.hp > 0 && !gameWon) {
     const movingLeft = keys.has("a") || keys.has("arrowleft");
     const movingRight = keys.has("d") || keys.has("arrowright");
     const jumping = keys.has("w") || keys.has(" ") || keys.has("arrowup");
 
     if (movingLeft) {
-      player.vx -= player.onGround ? 1.35 : 0.85;
+      player.vx -= player.onGround ? PLAYER_GROUND_ACCEL : PLAYER_AIR_ACCEL;
       player.dir = -1;
     }
     if (movingRight) {
-      player.vx += player.onGround ? 1.35 : 0.85;
+      player.vx += player.onGround ? PLAYER_GROUND_ACCEL : PLAYER_AIR_ACCEL;
       player.dir = 1;
     }
     if (!movingLeft && !movingRight && player.onGround && player.dashTimer <= 0) {
@@ -309,8 +427,8 @@ function update(delta) {
       addParticles(player.x + player.w / 2, player.y + player.h, "#d7f58b", 10, 5);
     }
 
-    player.vx = clamp(player.vx, -8.4, 8.4);
-    if (player.dashTimer > 0) player.vx = player.dir * 15;
+    player.vx = clamp(player.vx, -PLAYER_MAX_SPEED, PLAYER_MAX_SPEED);
+    if (player.dashTimer > 0) player.vx = player.dir * PLAYER_DASH_SPEED;
 
     if (keys.has("j")) attack();
     if (keys.has("k")) castFireball();
@@ -337,14 +455,20 @@ function update(delta) {
 
   updateEnemies();
   updateProjectiles();
+  updateEnemyProjectiles();
   updateCoins();
   updateEffects();
 
-  if (!gameWon && rectsOverlap(player, finishFlag)) {
-    gameWon = true;
-    player.gold += 50;
-    addText("通关 +50 金币", player.x - 18, player.y - 24, colors.gold);
+  if (!gameWon && !levelCleared && rectsOverlap(player, finishFlag)) {
+    const level = currentLevel();
+    player.gold += level.clearReward;
+    addText(`完成 +${level.clearReward} 金币`, player.x - 18, player.y - 24, colors.gold);
     addParticles(finishFlag.x + 12, finishFlag.y + 20, colors.gold, 46, 11);
+    if (currentLevelIndex < levelConfigs.length - 1) {
+      levelCleared = true;
+    } else {
+      gameWon = true;
+    }
   }
 
   const targetCamera = clamp(player.x - W * 0.38, 0, WORLD_W - W);
@@ -356,15 +480,62 @@ function updateEnemies() {
   for (const enemy of enemies) {
     if (!enemy.alive) continue;
     enemy.hitTimer = Math.max(0, enemy.hitTimer - 1);
+    enemy.attackCooldown = Math.max(0, enemy.attackCooldown - 1);
+    enemy.phase += 0.08;
+
+    const playerCenter = player.x + player.w / 2;
+    const enemyCenter = enemy.x + enemy.w / 2;
+    const playerDistance = Math.abs(playerCenter - enemyCenter);
+    const playerNearY = Math.abs(player.y - enemy.y) < 150;
+
+    if (enemy.type === "sentinel" && playerDistance < 320 && playerNearY && player.hp > 0) {
+      enemy.vx = Math.sign(playerCenter - enemyCenter || enemy.vx) * enemy.baseSpeed * 1.7;
+    } else if (Math.abs(enemy.vx) > enemy.baseSpeed * 1.1) {
+      enemy.vx = Math.sign(enemy.vx || 1) * enemy.baseSpeed;
+    }
+
+    if (enemy.type === "ranger" && enemy.attackCooldown <= 0 && playerDistance < 560 && playerNearY && player.hp > 0) {
+      shootEnemyProjectile(enemy);
+      enemy.attackCooldown = 100 + Math.random() * 45;
+    }
+
+    if (enemy.type === "mushroom" && enemy.attackCooldown <= 0 && playerDistance < 280 && playerNearY && player.hp > 0) {
+      enemy.vx = Math.sign(playerCenter - enemyCenter || enemy.vx) * enemy.baseSpeed * 1.45;
+      enemy.attackCooldown = 75 + Math.random() * 35;
+      addParticles(enemy.x + enemy.w / 2, enemy.y + enemy.h, "#70dfff", 8, 4);
+    }
+
     enemy.x += enemy.vx;
     if (enemy.x < enemy.minX || enemy.x + enemy.w > enemy.maxX) {
       enemy.vx *= -1;
       enemy.x = clamp(enemy.x, enemy.minX, enemy.maxX - enemy.w);
     }
     if (rectsOverlap(player, enemy)) {
-      hurtPlayer(18, enemy.x);
+      hurtPlayer(enemy.damage, enemy.x);
     }
   }
+}
+
+function shootEnemyProjectile(enemy) {
+  const startX = enemy.x + enemy.w / 2;
+  const startY = enemy.y + 18;
+  const targetX = player.x + player.w / 2;
+  const targetY = player.y + 24;
+  const dx = targetX - startX;
+  const dy = targetY - startY;
+  const distance = Math.max(1, Math.hypot(dx, dy));
+  enemyProjectiles.push({
+    x: startX,
+    y: startY,
+    w: 18,
+    h: 12,
+    vx: (dx / distance) * 5.2,
+    vy: (dy / distance) * 3.2,
+    life: 120,
+    damage: 18,
+    type: "thorn",
+  });
+  addParticles(startX, startY, "#a7f0d7", 10, 4);
 }
 
 function updateProjectiles() {
@@ -382,6 +553,24 @@ function updateProjectiles() {
       break;
     }
     if (remove) projectiles.splice(i, 1);
+  }
+}
+
+function updateEnemyProjectiles() {
+  for (let i = enemyProjectiles.length - 1; i >= 0; i -= 1) {
+    const p = enemyProjectiles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 1;
+    addParticles(p.x, p.y + p.h / 2, "#a7f0d7", 1, 1.1);
+    const outOfBounds = p.life <= 0 || p.x < 0 || p.x > WORLD_W || p.y < -60 || p.y > H + 80;
+    if (rectsOverlap(player, p)) {
+      hurtPlayer(p.damage, p.x);
+      addParticles(p.x, p.y, "#b7ffe0", 16, 5);
+      enemyProjectiles.splice(i, 1);
+    } else if (outOfBounds) {
+      enemyProjectiles.splice(i, 1);
+    }
   }
 }
 
@@ -427,6 +616,7 @@ function draw() {
   drawWorld();
   ctx.restore();
   drawHud();
+  if (levelCleared) drawLevelClearPanel();
   if (gameWon) drawWinPanel();
   if (player.hp <= 0) drawLosePanel();
   ctx.restore();
@@ -517,6 +707,7 @@ function drawWorld() {
   drawFinishFlag();
   enemies.forEach(drawEnemy);
   projectiles.forEach(drawProjectile);
+  enemyProjectiles.forEach(drawEnemyProjectile);
   drawPlayer();
   particles.forEach(drawParticle);
   floatingTexts.forEach(drawFloatingText);
@@ -580,19 +771,60 @@ function drawFinishFlag() {
 function drawEnemy(enemy) {
   if (!enemy.alive) return;
   const blink = enemy.hitTimer > 0 && enemy.hitTimer % 4 < 2;
+  const palette = enemyPalette(enemy.type);
+  const bob = enemy.type === "mushroom" ? Math.sin(performance.now() / 150 + enemy.phase) * 4 : 0;
+  const x = enemy.x;
+  const y = enemy.y + bob;
+  const w = enemy.w;
+  const h = enemy.h;
   ctx.fillStyle = "rgba(0,0,0,0.26)";
-  pixelRect(enemy.x + 5, enemy.y + enemy.h - 3, enemy.w - 4, 8);
-  ctx.fillStyle = blink ? "#ffffff" : "#6bd567";
-  pixelRect(enemy.x + 6, enemy.y + 12, enemy.w - 12, enemy.h - 10);
-  ctx.fillStyle = blink ? "#fff0a6" : "#2b7043";
-  pixelRect(enemy.x + 12, enemy.y + 5, enemy.w - 24, 16);
-  ctx.fillStyle = "#1d3829";
-  pixelRect(enemy.x + 14, enemy.y + 24, 6, 6);
-  pixelRect(enemy.x + enemy.w - 20, enemy.y + 24, 6, 6);
+  pixelRect(x + 5, enemy.y + enemy.h - 3, w - 4, 8);
+
+  ctx.fillStyle = blink ? "#ffffff" : palette.body;
+  pixelRect(x + 6, y + 12, w - 12, h - 10);
+  ctx.fillStyle = blink ? "#fff0a6" : palette.head;
+  pixelRect(x + 12, y + 5, w - 24, 16);
+  ctx.fillStyle = palette.eye;
+  pixelRect(x + 14, y + 24, 6, 6);
+  pixelRect(x + w - 20, y + 24, 6, 6);
+
+  if (enemy.type === "ranger") {
+    ctx.fillStyle = "#f7e9b0";
+    pixelRect(x + (enemy.vx > 0 ? w - 6 : 0), y + 14, 6, 30);
+    ctx.fillStyle = "#a7f0d7";
+    pixelRect(x + (enemy.vx > 0 ? w - 16 : 10), y + 29, 18, 4);
+  } else if (enemy.type === "guard") {
+    ctx.fillStyle = "#c8d0e0";
+    pixelRect(x + 8, y + 16, w - 16, 8);
+    pixelRect(x + 12, y + 32, w - 24, 7);
+    ctx.fillStyle = "#3c445a";
+    pixelRect(x + 5, y + 20, 7, 22);
+    pixelRect(x + w - 12, y + 20, 7, 22);
+  } else if (enemy.type === "mushroom") {
+    ctx.fillStyle = "#54d9ff";
+    pixelRect(x + 7, y + 5, w - 14, 8);
+    ctx.fillStyle = "#ecf7ff";
+    pixelRect(x + 16, y + 8, 6, 5);
+    pixelRect(x + w - 23, y + 8, 5, 5);
+  } else if (enemy.type === "sentinel") {
+    ctx.fillStyle = "#ffe46e";
+    pixelRect(x + 11, y + 11, w - 22, 5);
+    ctx.fillStyle = "#ff4f68";
+    pixelRect(x + (enemy.vx > 0 ? w - 7 : 1), y + 30, 6, 12);
+  }
+
   ctx.fillStyle = "#1f1b1c";
-  pixelRect(enemy.x + 8, enemy.y - 14, enemy.w - 16, 5);
+  pixelRect(x + 8, enemy.y - 14, w - 16, 5);
   ctx.fillStyle = "#ff6271";
-  pixelRect(enemy.x + 8, enemy.y - 14, (enemy.w - 16) * (enemy.hp / enemy.maxHp), 5);
+  pixelRect(x + 8, enemy.y - 14, (w - 16) * (enemy.hp / enemy.maxHp), 5);
+}
+
+function enemyPalette(type) {
+  if (type === "ranger") return { body: "#4fc6a4", head: "#1e6d68", eye: "#e2fff0" };
+  if (type === "guard") return { body: "#7b8197", head: "#33394d", eye: "#ffe46e" };
+  if (type === "mushroom") return { body: "#7b6cff", head: "#3b347e", eye: "#e9f2ff" };
+  if (type === "sentinel") return { body: "#ff8a5b", head: "#74302f", eye: "#fff0a6" };
+  return { body: "#6bd567", head: "#2b7043", eye: "#1d3829" };
 }
 
 function drawProjectile(p) {
@@ -601,6 +833,15 @@ function drawProjectile(p) {
   ctx.fillStyle = "#ffef6f";
   pixelRect(p.x + 5, p.y + 3, 12, 8);
   ctx.fillStyle = "#ff6c30";
+  pixelRect(p.x, p.y, p.w, p.h);
+}
+
+function drawEnemyProjectile(p) {
+  ctx.fillStyle = "rgba(128, 255, 207, 0.28)";
+  pixelRect(p.x - 6, p.y - 5, p.w + 12, p.h + 10);
+  ctx.fillStyle = "#d7ffbd";
+  pixelRect(p.x + 3, p.y + 3, 9, 4);
+  ctx.fillStyle = "#58dca9";
   pixelRect(p.x, p.y, p.w, p.h);
 }
 
@@ -674,7 +915,7 @@ function drawStatusPanel() {
 
   ctx.fillStyle = colors.ink;
   ctx.font = "bold 16px Menlo, monospace";
-  ctx.fillText(`Level ${player.level}`, x + 112, y + 30);
+  ctx.fillText(`Lv ${player.level} · 关 ${currentLevelIndex + 1}/${levelConfigs.length}`, x + 112, y + 30);
   ctx.fillText(`Gold ${player.gold}`, x + 326, y + 30);
 
   drawBar(x + 112, y + 48, 168, 14, player.hp, player.maxHp, colors.red, "HP");
@@ -721,7 +962,7 @@ function drawMiniMap() {
   panel(x, y, w, h);
   ctx.fillStyle = colors.ink;
   ctx.font = "bold 15px Menlo, monospace";
-  ctx.fillText("Forest Path", x + 18, y + 24);
+  ctx.fillText(`${currentLevelIndex + 1}. ${currentLevel().name}`, x + 18, y + 24);
   ctx.fillStyle = "rgba(74, 175, 142, 0.18)";
   pixelRect(x + 22, y + 38, w - 44, h - 54);
   ctx.strokeStyle = "rgba(223,255,219,0.28)";
@@ -749,8 +990,8 @@ function drawQuestPanel() {
   panel(16, H - 100, 360, 82);
   ctx.fillStyle = colors.ink;
   ctx.font = "14px Menlo, monospace";
-  ctx.fillText("任务：穿过森林小径，到达右侧旗帜", 32, H - 70);
-  ctx.fillText("击败守卫并收集金币，可获得经验", 32, H - 45);
+  ctx.fillText(`任务：${currentLevel().quest}`, 32, H - 70);
+  ctx.fillText(currentLevel().hint, 32, H - 45);
 }
 
 function drawSkillBar() {
@@ -801,10 +1042,23 @@ function drawWinPanel() {
   ctx.textAlign = "center";
   ctx.fillStyle = "#fff4d5";
   ctx.font = "bold 30px Menlo, monospace";
-  ctx.fillText("森林通关!", W / 2, H / 2 - 42);
+  ctx.fillText("全部关卡通关!", W / 2, H / 2 - 42);
   ctx.font = "16px Menlo, monospace";
   ctx.fillText(`金币 ${player.gold} · 等级 ${player.level} · 经验 ${Math.round(player.exp)}%`, W / 2, H / 2 + 2);
   ctx.fillText("按 R 重新开始", W / 2, H / 2 + 46);
+  ctx.textAlign = "left";
+}
+
+function drawLevelClearPanel() {
+  panel(W / 2 - 250, H / 2 - 108, 500, 216);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fff4d5";
+  ctx.font = "bold 28px Menlo, monospace";
+  ctx.fillText(`${currentLevel().name} 完成!`, W / 2, H / 2 - 48);
+  ctx.font = "16px Menlo, monospace";
+  ctx.fillText(`金币 ${player.gold} · HP ${Math.round(player.hp)} / ${player.maxHp}`, W / 2, H / 2 - 4);
+  ctx.fillText(`下一关：${levelConfigs[currentLevelIndex + 1].name}`, W / 2, H / 2 + 34);
+  ctx.fillText("按 Enter 进入下一关 · 按 R 重开", W / 2, H / 2 + 70);
   ctx.textAlign = "left";
 }
 
