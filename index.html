@@ -2,7 +2,7 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
     <title>森林勇者 - 像素冒险 Demo</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%23132819'/%3E%3Crect x='9' y='5' width='14' height='18' fill='%2367d56d'/%3E%3Crect x='13' y='18' width='6' height='8' fill='%235d3a22'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
@@ -18,6 +18,21 @@
         <span><kbd>L</kbd> 冲刺</span>
         <span><kbd>R</kbd> 重开</span>
       </section>
+      <section class="touch-controls" data-touch-controls aria-label="触控操作">
+        <div class="touch-pad" aria-label="移动与跳跃">
+          <button class="touch-btn touch-jump" type="button" data-key="w" aria-label="跳跃">↑</button>
+          <button class="touch-btn touch-left" type="button" data-key="a" aria-label="向左移动">←</button>
+          <button class="touch-btn touch-right" type="button" data-key="d" aria-label="向右移动">→</button>
+        </div>
+        <div class="touch-actions" aria-label="技能操作">
+          <button class="touch-btn touch-small" type="button" data-key="enter" aria-label="进入下一关">继续</button>
+          <button class="touch-btn touch-small" type="button" data-key="r" aria-label="重新开始">重开</button>
+          <button class="touch-btn touch-action" type="button" data-key="j" aria-label="斩击">斩</button>
+          <button class="touch-btn touch-action" type="button" data-key="k" aria-label="火球">火</button>
+          <button class="touch-btn touch-action" type="button" data-key="l" aria-label="冲刺">冲</button>
+        </div>
+      </section>
+      <div class="orientation-hint" aria-hidden="true">请横屏游玩</div>
     </main>
     <script src="./game.js"></script>
   </body>

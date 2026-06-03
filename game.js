@@ -20,6 +20,8 @@ canvas.style.height = "auto";
 ctx.scale(DPR, DPR);
 
 const keys = new Set();
+const physicalKeys = new Set();
+const touchKeyCounts = new Map();
 const particles = [];
 const projectiles = [];
 const enemyProjectiles = [];
@@ -1094,17 +1096,97 @@ function loop(time) {
   requestAnimationFrame(loop);
 }
 
+function syncKeyState(key) {
+  if (physicalKeys.has(key) || (touchKeyCounts.get(key) ?? 0) > 0) {
+    keys.add(key);
+  } else {
+    keys.delete(key);
+  }
+}
+
+function pressTouchKey(key) {
+  touchKeyCounts.set(key, (touchKeyCounts.get(key) ?? 0) + 1);
+  keys.add(key);
+}
+
+function releaseTouchKey(key) {
+  const nextCount = Math.max(0, (touchKeyCounts.get(key) ?? 0) - 1);
+  if (nextCount === 0) {
+    touchKeyCounts.delete(key);
+  } else {
+    touchKeyCounts.set(key, nextCount);
+  }
+  syncKeyState(key);
+}
+
+function clearTouchKeys() {
+  const activeKeys = Array.from(touchKeyCounts.keys());
+  touchKeyCounts.clear();
+  activeKeys.forEach(syncKeyState);
+  document.querySelectorAll(".touch-btn.is-pressed").forEach((button) => {
+    button.classList.remove("is-pressed");
+  });
+}
+
+function setupTouchControls() {
+  const controls = document.querySelector("[data-touch-controls]");
+  if (!controls) return;
+  const activePointers = new Map();
+
+  controls.querySelectorAll("[data-key]").forEach((button) => {
+    const key = button.dataset.key;
+    if (!key) return;
+
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      activePointers.set(event.pointerId, { button, key });
+      pressTouchKey(key);
+      button.classList.add("is-pressed");
+      if (button.setPointerCapture) {
+        try {
+          button.setPointerCapture(event.pointerId);
+        } catch {
+          // Synthetic browser tests may not register a real active pointer.
+        }
+      }
+    });
+
+    const releasePointer = (event) => {
+      const active = activePointers.get(event.pointerId);
+      if (!active) return;
+      event.preventDefault();
+      activePointers.delete(event.pointerId);
+      releaseTouchKey(active.key);
+      active.button.classList.remove("is-pressed");
+    };
+
+    button.addEventListener("pointerup", releasePointer);
+    button.addEventListener("pointercancel", releasePointer);
+    button.addEventListener("pointerleave", releasePointer);
+  });
+
+  controls.addEventListener("contextmenu", (event) => event.preventDefault());
+  window.addEventListener("blur", clearTouchKeys);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) clearTouchKeys();
+  });
+}
+
 window.addEventListener("keydown", (event) => {
   const key = event.key.toLowerCase();
   if ([" ", "arrowleft", "arrowright", "arrowup", "arrowdown"].includes(key)) {
     event.preventDefault();
   }
+  physicalKeys.add(key);
   keys.add(key);
 });
 
 window.addEventListener("keyup", (event) => {
-  keys.delete(event.key.toLowerCase());
+  const key = event.key.toLowerCase();
+  physicalKeys.delete(key);
+  syncKeyState(key);
 });
 
 resetGame();
+setupTouchControls();
 requestAnimationFrame(loop);
