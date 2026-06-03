@@ -1132,6 +1132,7 @@ function loop(time) {
   const delta = Math.min(32, time - lastTime || 16);
   lastTime = time;
   update(delta);
+  updateTouchStateControls();
   draw();
   requestAnimationFrame(loop);
 }
@@ -1166,6 +1167,16 @@ function clearTouchKeys() {
   document.querySelectorAll(".touch-btn.is-pressed").forEach((button) => {
     button.classList.remove("is-pressed");
   });
+}
+
+function updateTouchStateControls() {
+  const continueButton = document.querySelector('[data-state-control="continue"]');
+  const restartButton = document.querySelector('[data-state-control="restart"]');
+  const canContinue = levelCleared && currentLevelIndex < levelConfigs.length - 1;
+  const canRestart = levelCleared || gameWon || player.hp <= 0;
+
+  continueButton?.classList.toggle("is-visible", canContinue);
+  restartButton?.classList.toggle("is-visible", canRestart);
 }
 
 function setupTouchControls() {
