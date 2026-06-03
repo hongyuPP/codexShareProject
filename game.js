@@ -1,8 +1,10 @@
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-const W = canvas.width;
-const H = canvas.height;
+const BASE_W = 1280;
+const BASE_H = 720;
+let W = BASE_W;
+let H = BASE_H;
 let WORLD_W = 2850;
 const GRAVITY = 0.82;
 const FRICTION = 0.82;
@@ -11,13 +13,7 @@ const PLAYER_GROUND_ACCEL = 1.08;
 const PLAYER_AIR_ACCEL = 0.68;
 const PLAYER_MAX_SPEED = 6.8;
 const PLAYER_DASH_SPEED = 13;
-const DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-
-canvas.width = W * DPR;
-canvas.height = H * DPR;
-canvas.style.width = "100%";
-canvas.style.height = "auto";
-ctx.scale(DPR, DPR);
+let DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
 const keys = new Set();
 const physicalKeys = new Set();
@@ -50,9 +46,33 @@ function updateTouchLayoutMode() {
   document.body.classList.toggle("touch-enabled", enableTouch);
   root.classList.toggle("touch-portrait", enableTouch && !landscape);
   document.body.classList.toggle("touch-portrait", enableTouch && !landscape);
+
+  return { enableTouch, landscape };
 }
 
-updateTouchLayoutMode();
+function resizeCanvasForViewport() {
+  const { enableTouch, landscape } = updateTouchLayoutMode();
+  DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+  H = BASE_H;
+
+  if (enableTouch && landscape) {
+    const aspect = Math.max(1.25, window.innerWidth / Math.max(1, window.innerHeight));
+    W = clamp(Math.round(BASE_H * aspect), 960, 1720);
+  } else {
+    W = BASE_W;
+  }
+
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+
+function handleViewportChange() {
+  resizeCanvasForViewport();
+  cameraX = clamp(cameraX, 0, Math.max(0, WORLD_W - W));
+}
+
+resizeCanvasForViewport();
 
 const colors = {
   ink: "#fff4d5",
@@ -1219,10 +1239,10 @@ function setupTouchControls() {
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) clearTouchKeys();
   });
-  window.addEventListener("resize", updateTouchLayoutMode);
+  window.addEventListener("resize", handleViewportChange);
   window.addEventListener("orientationchange", () => {
     clearTouchKeys();
-    updateTouchLayoutMode();
+    handleViewportChange();
   });
 }
 
