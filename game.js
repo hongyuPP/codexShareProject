@@ -34,6 +34,26 @@ let levelCleared = false;
 let currentLevelIndex = 0;
 let shake = 0;
 
+function updateTouchLayoutMode() {
+  const params = new URLSearchParams(window.location.search);
+  const forceTouch = params.has("touch") || params.has("mobile");
+  const hasTouch = navigator.maxTouchPoints > 0 || navigator.msMaxTouchPoints > 0;
+  const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+  const hoverless = window.matchMedia?.("(hover: none)").matches ?? false;
+  const smallScreen = Math.min(window.innerWidth, window.innerHeight) <= 720;
+  const likelyMobile = forceTouch || hasTouch || coarsePointer || hoverless || smallScreen;
+  const landscape = window.innerWidth > window.innerHeight;
+  const enableTouch = forceTouch || (likelyMobile && window.innerWidth <= 1180);
+  const root = document.documentElement;
+
+  root.classList.toggle("touch-enabled", enableTouch);
+  document.body.classList.toggle("touch-enabled", enableTouch);
+  root.classList.toggle("touch-portrait", enableTouch && !landscape);
+  document.body.classList.toggle("touch-portrait", enableTouch && !landscape);
+}
+
+updateTouchLayoutMode();
+
 const colors = {
   ink: "#fff4d5",
   panel: "rgba(22, 17, 16, 0.84)",
@@ -1163,12 +1183,46 @@ function setupTouchControls() {
     button.addEventListener("pointerup", releasePointer);
     button.addEventListener("pointercancel", releasePointer);
     button.addEventListener("pointerleave", releasePointer);
+
+    if (!window.PointerEvent) {
+      button.addEventListener(
+        "touchstart",
+        (event) => {
+          event.preventDefault();
+          for (const touch of event.changedTouches) {
+            activePointers.set(`touch-${touch.identifier}`, { button, key });
+            pressTouchKey(key);
+          }
+          button.classList.add("is-pressed");
+        },
+        { passive: false },
+      );
+
+      const releaseTouch = (event) => {
+        event.preventDefault();
+        for (const touch of event.changedTouches) {
+          const active = activePointers.get(`touch-${touch.identifier}`);
+          if (!active) continue;
+          activePointers.delete(`touch-${touch.identifier}`);
+          releaseTouchKey(active.key);
+          active.button.classList.remove("is-pressed");
+        }
+      };
+
+      button.addEventListener("touchend", releaseTouch, { passive: false });
+      button.addEventListener("touchcancel", releaseTouch, { passive: false });
+    }
   });
 
   controls.addEventListener("contextmenu", (event) => event.preventDefault());
   window.addEventListener("blur", clearTouchKeys);
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) clearTouchKeys();
+  });
+  window.addEventListener("resize", updateTouchLayoutMode);
+  window.addEventListener("orientationchange", () => {
+    clearTouchKeys();
+    updateTouchLayoutMode();
   });
 }
 

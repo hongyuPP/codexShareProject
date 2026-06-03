@@ -211,7 +211,45 @@ kbd {
   }
 }
 
-@media (hover: none), (pointer: coarse), (max-width: 940px) and (orientation: landscape) {
+html.touch-enabled,
+body.touch-enabled {
+  padding: 0;
+  overflow: hidden;
+}
+
+body.touch-enabled .game-shell {
+  display: grid;
+  width: 100vw;
+  height: 100svh;
+  place-items: center;
+}
+
+body.touch-enabled #game {
+  width: min(100vw, calc(100svh * 16 / 9));
+  max-width: 100vw;
+  max-height: 100svh;
+  border-width: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+body.touch-enabled .keyboard-panel {
+  display: none;
+}
+
+body.touch-enabled .touch-controls {
+  display: block;
+}
+
+body.touch-portrait .touch-controls {
+  display: none;
+}
+
+body.touch-portrait .orientation-hint {
+  display: grid;
+}
+
+@media (hover: none), (pointer: coarse), (max-width: 1024px) and (orientation: landscape) {
   html,
   body {
     width: 100%;
@@ -258,7 +296,7 @@ kbd {
   }
 }
 
-@media (hover: none) and (pointer: coarse) and (max-height: 420px), (max-width: 940px) and (orientation: landscape) and (max-height: 420px) {
+@media (hover: none) and (pointer: coarse) and (max-height: 420px), (max-width: 1024px) and (orientation: landscape) and (max-height: 420px) {
   .touch-pad {
     grid-template-columns: repeat(3, 50px);
     grid-template-rows: repeat(2, 50px);
